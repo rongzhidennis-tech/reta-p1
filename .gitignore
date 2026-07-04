@@ -1,0 +1,9 @@
+# macOS Finder metadata (icon positions, folder view settings)
+.DS_Store
+
+# Per-user Xcode state: window layout, open tabs, breakpoints
+xcuserdata/
+
+# Compiled output — regenerated on every build
+build/
+DerivedData/
