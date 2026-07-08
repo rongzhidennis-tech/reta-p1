@@ -9,11 +9,13 @@ import SwiftUI
 import AppKit // AppKit is the older macOS UI framework SwiftUI is built on;
              // we reach into it for NSApplication to quit the app.
 import AVFoundation // Apple's audio/video framework; AVCaptureDevice lives here.
+import Speech // Apple's on-device/server speech recognition; SFSpeechRecognizer lives here.
 
 struct ContentView: View {
     // @State keeps this single AudioListener alive for as long as the view
     // exists, so the audio engine inside it isn't destroyed between taps.
     @State private var listener = AudioListener()
+    @State private var fileTranscriber = FileTranscriber()
 
     var body: some View {
         // VStack stacks its children vertically; spacing is the gap between them.
@@ -26,6 +28,21 @@ struct ContentView: View {
                 .foregroundStyle(.secondary) // muted gray for secondary text
 
             Button("Start listening") {
+                // Ask permission to use Apple's speech recognition. Like the mic,
+                // this shows its own one-time system prompt. status is an enum;
+                // we translate it to readable text with a switch.
+                SFSpeechRecognizer.requestAuthorization { status in
+                    let text: String
+                    switch status {
+                    case .authorized:    text = "authorized"
+                    case .denied:        text = "denied"
+                    case .restricted:    text = "restricted"      // not allowed on this device
+                    case .notDetermined: text = "not determined"  // user hasn't chosen yet
+                    @unknown default:    text = "unknown"          // future-proofing
+                    }
+                    print("Speech recognition authorization: \(text)")
+                }
+
                 // Ask macOS for permission to use the microphone.
                 // The answer does NOT come back on this line — the user has to
                 // respond to a dialog first. So we hand requestAccess a "closure"
@@ -41,6 +58,23 @@ struct ContentView: View {
                 }
             }
             .buttonStyle(.borderedProminent)
+
+            // TEMPORARY (mic-less testing): transcribe a bundled audio file to
+            // verify the speech stack. Remove once live transcription works.
+            Button("Transcribe test file") {
+                SFSpeechRecognizer.requestAuthorization { status in
+                    guard status == .authorized else {
+                        print("Speech recognition not authorized: \(status)")
+                        return
+                    }
+                    // This callback arrives on a background thread; our app code
+                    // (like most UI-adjacent code) belongs on the main thread,
+                    // so we hop back before touching fileTranscriber.
+                    DispatchQueue.main.async {
+                        fileTranscriber.transcribeBundledSample()
+                    }
+                }
+            }
 
             Divider() // a thin horizontal line separating the main action from utilities
 
