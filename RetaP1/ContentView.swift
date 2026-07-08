@@ -11,6 +11,10 @@ import AppKit // AppKit is the older macOS UI framework SwiftUI is built on;
 import AVFoundation // Apple's audio/video framework; AVCaptureDevice lives here.
 
 struct ContentView: View {
+    // @State keeps this single AudioListener alive for as long as the view
+    // exists, so the audio engine inside it isn't destroyed between taps.
+    @State private var listener = AudioListener()
+
     var body: some View {
         // VStack stacks its children vertically; spacing is the gap between them.
         VStack(spacing: 12) {
@@ -29,7 +33,11 @@ struct ContentView: View {
                 // runs LATER, once the user taps Allow/Don't Allow. `granted`
                 // is the true/false result passed back to us.
                 AVCaptureDevice.requestAccess(for: .audio) { granted in
-                    print("Microphone access granted: \(granted)")
+                    if granted {
+                        listener.start() // begin capturing mic audio
+                    } else {
+                        print("Microphone permission denied.")
+                    }
                 }
             }
             .buttonStyle(.borderedProminent)
