@@ -8,6 +8,7 @@
 import SwiftUI
 import AppKit // AppKit is the older macOS UI framework SwiftUI is built on;
              // we reach into it for NSApplication to quit the app.
+import AVFoundation // Apple's audio/video framework; AVCaptureDevice lives here.
 
 struct ContentView: View {
     var body: some View {
@@ -21,7 +22,15 @@ struct ContentView: View {
                 .foregroundStyle(.secondary) // muted gray for secondary text
 
             Button("Start listening") {
-                // Placeholder: Phase 1 will start audio capture + transcription here.
+                // Ask macOS for permission to use the microphone.
+                // The answer does NOT come back on this line — the user has to
+                // respond to a dialog first. So we hand requestAccess a "closure"
+                // (the { granted in ... } block): a chunk of code it stores and
+                // runs LATER, once the user taps Allow/Don't Allow. `granted`
+                // is the true/false result passed back to us.
+                AVCaptureDevice.requestAccess(for: .audio) { granted in
+                    print("Microphone access granted: \(granted)")
+                }
             }
             .buttonStyle(.borderedProminent)
 
