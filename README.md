@@ -10,9 +10,14 @@ once the fundamentals are solid.
 
 ## What this app does (so far)
 
-Right now it is the default macOS SwiftUI template: a single window that shows a
-globe icon and "Hello, world!". The next milestone is turning it into a menu-bar
-app that shows a small "Reta" placeholder.
+Phase 1 is complete. Reta lives in the menu bar (a brain icon, no Dock icon)
+and, on "Start listening", captures live microphone audio and transcribes it
+in real time — entirely on-device; no audio ever leaves the Mac. The transcript
+appears in the popover as you speak, and Stop ends the session cleanly.
+
+How it works, in one line: the microphone feeds an `AVAudioEngine` tap, each
+audio buffer is appended to an on-device `SFSpeechRecognizer` request, and its
+partial results update an observable `transcript` that SwiftUI redraws live.
 
 ## Requirements
 
@@ -23,7 +28,10 @@ app that shows a small "Reta" placeholder.
 
 1. Open `RetaP1.xcodeproj` in Xcode.
 2. Press **⌘R** (or the ▶ button) to build and run.
-3. The app window appears; stop it with **⌘.** (command-period).
+3. No window appears — look for the brain icon in the menu bar (top-right).
+4. Click it, then "Start listening" and speak. First run: macOS asks for
+   microphone and speech-recognition permission.
+5. Quit with the popover's "Quit Reta" button.
 
 ## Project layout
 
@@ -31,9 +39,10 @@ app that shows a small "Reta" placeholder.
 RetaP1/
 ├── RetaP1.xcodeproj      Xcode's project database (build settings, file list)
 └── RetaP1/               Source code
-    ├── RetaP1App.swift   App entry point — defines the app and its window
-    ├── ContentView.swift The UI shown inside the window
-    └── Assets.xcassets   Images, colors, and the app icon
+    ├── RetaP1App.swift      App entry point — the MenuBarExtra scene
+    ├── ContentView.swift    The popover UI: transcript, Start/Stop, Quit
+    ├── AudioListener.swift  Mic capture + live on-device transcription
+    └── Assets.xcassets      Images, colors, and the app icon
 ```
 
 ## The bigger vision (future phases, not built yet)

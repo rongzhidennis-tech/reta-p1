@@ -15,7 +15,6 @@ struct ContentView: View {
     // @State keeps this single AudioListener alive for as long as the view
     // exists, so the audio engine inside it isn't destroyed between taps.
     @State private var listener = AudioListener()
-    @State private var fileTranscriber = FileTranscriber()
 
     var body: some View {
         // VStack stacks its children vertically; spacing is the gap between them.
@@ -67,23 +66,6 @@ struct ContentView: View {
             }
             .buttonStyle(.borderedProminent)
             .tint(listener.isListening ? .red : .accentColor) // red while recording
-
-            // TEMPORARY (mic-less testing): transcribe a bundled audio file to
-            // verify the speech stack. Remove once live transcription works.
-            Button("Transcribe test file") {
-                SFSpeechRecognizer.requestAuthorization { status in
-                    guard status == .authorized else {
-                        print("Speech recognition not authorized: \(status)")
-                        return
-                    }
-                    // This callback arrives on a background thread; our app code
-                    // (like most UI-adjacent code) belongs on the main thread,
-                    // so we hop back before touching fileTranscriber.
-                    DispatchQueue.main.async {
-                        fileTranscriber.transcribeBundledSample()
-                    }
-                }
-            }
 
             Divider() // a thin horizontal line separating the main action from utilities
 
