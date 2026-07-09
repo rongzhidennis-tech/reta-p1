@@ -5,7 +5,8 @@ Reta is a macOS menu-bar app for motivated college students. It listens to a liv
 lecture, transcribes it in real time, and at natural seams (topic transitions,
 pauses) shows ONE short retrieval prompt as a small floating card — active recall
 in the moment. The hard core of the product is the *timing* of prompts.
-Current status: Phase 1 (live audio capture + on-device transcription).
+Current status: Phase 2 (seam detection — pause-based prompt timing; Phase 1,
+live capture + on-device transcription, is complete and tagged v0.1-phase1).
 
 ## Who you're working with
 A first-time developer whose explicit goal is to learn to build software properly,

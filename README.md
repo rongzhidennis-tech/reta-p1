@@ -3,10 +3,10 @@
 A learning project on the way to **Reta** — a macOS menu-bar app that helps
 college students stay present in lectures through active recall.
 
-This repository is **Phase 1** of that journey: a deliberately minimal macOS app
-built to learn Swift, SwiftUI, and the Xcode/Git workflow from the ground up.
-Each phase is a separate, self-contained app. The real product is built later,
-once the fundamentals are solid.
+This repository is that journey, built phase by phase to learn Swift, SwiftUI,
+and the Xcode/Git workflow from the ground up. Phases build on each other in
+this one app, and each completed phase is tagged (e.g. `v0.1-phase1`), so any
+earlier state is one `git checkout` away.
 
 ## What this app does (so far)
 
