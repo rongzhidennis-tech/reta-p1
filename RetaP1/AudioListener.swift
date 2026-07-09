@@ -2,55 +2,71 @@
 //  AudioListener.swift
 //  RetaP1
 //
-//  Owns the microphone capture engine. For now its only job is to prove
-//  that live audio is flowing, by logging each buffer of samples it receives.
+//  Captures live microphone audio and transcribes it as the user speaks:
+//  mic -> AVAudioEngine tap -> buffers appended to a speech request ->
+//  partial transcripts published to the UI via the observable `transcript`.
 //
 
 import AVFoundation
+import Speech
+import Observation
 
+// @Observable lets SwiftUI watch this class: any view that reads `transcript`
+// is automatically redrawn whenever `transcript` changes.
+@Observable
 class AudioListener {
-    // AVAudioEngine is Apple's graph of audio "nodes" (mic, effects, output...).
-    // We hold ONE instance for the app's lifetime. If this were a local variable
-    // it would be destroyed the moment start() returned, and no audio would flow.
+    // The live text. The popover reads this; updating it updates the screen.
+    var transcript = ""
+
+    // Long-lived machinery (properties, so they outlive start()):
     private let engine = AVAudioEngine()
+    private var recognizer: SFSpeechRecognizer?
+    private var task: SFSpeechRecognitionTask?
 
     func start() {
-        // Installing a tap while already running would crash, so bail if we're on.
+        // Installing a second tap while running would crash; bail if already on.
         guard !engine.isRunning else { return }
 
+        guard let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US")) else {
+            print("Speech recognition not available for en-US on this Mac.")
+            return
+        }
+        self.recognizer = recognizer
+        print("Supports on-device recognition: \(recognizer.supportsOnDeviceRecognition)")
+
         let inputNode = engine.inputNode
-
-        // Diagnostics: the mic node has a format on its input (hardware) side and
-        // its output (downstream) side. If they disagree, that's usually the root
-        // of format errors — so we log both.
-        let inputFormat = inputNode.inputFormat(forBus: 0)
-        let outputFormat = inputNode.outputFormat(forBus: 0)
-        print("mic inputFormat:  \(inputFormat)")
-        print("mic outputFormat: \(outputFormat)")
-
-        // If no microphone is available/selected, sampleRate comes back as 0.
-        guard inputFormat.sampleRate > 0 else {
+        guard inputNode.inputFormat(forBus: 0).sampleRate > 0 else {
             print("No usable microphone input (sampleRate is 0).")
             return
         }
 
-        // A "tap" is a probe on the node: macOS hands us each incoming buffer as
-        // audio flows, without disturbing the stream. This closure runs over and
-        // over, on a background audio thread — once per buffer.
-        //
-        // format: nil = adopt the mic node's OWN format. Handing in a format that
-        // doesn't exactly match crashes with "Failed to create tap due to format
-        // mismatch". (bufferSize is only a hint; the system may hand a different size.)
-        inputNode.installTap(onBus: 0, bufferSize: 1024, format: nil) { buffer, when in
-            // frameLength = how many samples are in THIS chunk.
-            print("audio buffer: \(buffer.frameLength) samples")
+        // The live twin of FileTranscriber's URL request: instead of pointing at
+        // a finished file, it's an open-ended request we keep feeding buffers.
+        let request = SFSpeechAudioBufferRecognitionRequest()
+        request.requiresOnDeviceRecognition = true // audio never leaves this Mac
+        request.shouldReportPartialResults = true  // refine the transcript as we go
+
+        // The pipe: every ~0.1s chunk from the mic is appended to the request.
+        // (`_` discards the timestamp parameter we don't need.)
+        inputNode.installTap(onBus: 0, bufferSize: 1024, format: nil) { buffer, _ in
+            request.append(buffer)
         }
 
-        // prepare() allocates the engine's resources and negotiates formats across
-        // the graph BEFORE starting. Skipping it is a common cause of the -10868
-        // "format not supported" error when the engine spins up the input chain.
-        engine.prepare()
+        // Same result closure as FileTranscriber — called once per refined guess.
+        // It arrives on a background thread; transcript drives the UI, so we hop
+        // to the main thread before writing it.
+        task = recognizer.recognitionTask(with: request) { result, error in
+            if let result {
+                DispatchQueue.main.async {
+                    self.transcript = result.bestTranscription.formattedString
+                }
+            }
+            if let error {
+                print("Recognition error: \(error.localizedDescription)")
+            }
+        }
 
+        engine.prepare()
         do {
             try engine.start()
             print("Audio engine started.")

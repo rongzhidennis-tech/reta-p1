@@ -23,9 +23,22 @@ struct ContentView: View {
             Text("Reta")
                 .font(.headline)
 
-            Text("Ready to listen.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary) // muted gray for secondary text
+            // Show the live transcript once there is one; a hint until then.
+            // SwiftUI re-runs this body whenever listener.transcript changes
+            // (that's @Observable at work), so the text updates as you speak.
+            if listener.transcript.isEmpty {
+                Text("Ready to listen.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary) // muted gray for secondary text
+            } else {
+                ScrollView {
+                    Text(listener.transcript)
+                        .font(.subheadline)
+                        // fill the card's width, text ragged-right
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(height: 120) // keep the card compact; long text scrolls
+            }
 
             Button("Start listening") {
                 // Ask permission to use Apple's speech recognition. Like the mic,
