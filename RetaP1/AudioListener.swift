@@ -54,6 +54,19 @@ class AudioListener {
         // (`_` discards the timestamp parameter we don't need.)
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: nil) { buffer, _ in
             request.append(buffer)
+
+            // Measure this chunk's loudness (RMS): square each sample so
+            // negative swings count too, average, square-root. Samples are
+            // Float32 in -1...1; silence hovers near 0.
+            guard let channel = buffer.floatChannelData?[0] else { return }
+            let count = Int(buffer.frameLength)
+            var sumOfSquares: Float = 0
+            for i in 0..<count {
+                sumOfSquares += channel[i] * channel[i]
+            }
+            let rms = sqrt(sumOfSquares / Float(count))
+            // Temporary diagnostic; becomes seam-detection input in the next step.
+            print(String(format: "level: %.4f", rms))
         }
 
         // Same result closure as FileTranscriber — called once per refined guess.
