@@ -17,10 +17,13 @@ import Observation
 class AudioListener {
     // The live text. The popover reads this; updating it updates the screen.
     var transcript = ""
+    // Whether we're currently capturing; drives the Start/Stop button label.
+    var isListening = false
 
     // Long-lived machinery (properties, so they outlive start()):
     private let engine = AVAudioEngine()
     private var recognizer: SFSpeechRecognizer?
+    private var request: SFSpeechAudioBufferRecognitionRequest?
     private var task: SFSpeechRecognitionTask?
 
     func start() {
@@ -45,6 +48,7 @@ class AudioListener {
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.requiresOnDeviceRecognition = true // audio never leaves this Mac
         request.shouldReportPartialResults = true  // refine the transcript as we go
+        self.request = request // kept as a property so stop() can call endAudio()
 
         // The pipe: every ~0.1s chunk from the mic is appended to the request.
         // (`_` discards the timestamp parameter we don't need.)
@@ -69,9 +73,26 @@ class AudioListener {
         engine.prepare()
         do {
             try engine.start()
+            isListening = true
+            transcript = "" // fresh session, fresh transcript
             print("Audio engine started.")
         } catch {
             print("Failed to start audio engine: \(error)")
         }
+    }
+
+    func stop() {
+        guard engine.isRunning else { return }
+
+        // Teardown mirrors setup, in order:
+        engine.inputNode.removeTap(onBus: 0) // 1. stop new buffers entering the pipe
+        engine.stop()                        // 2. release the microphone hardware
+        request?.endAudio()                  // 3. "no more audio" — recognizer finishes
+                                             //    politely and delivers its final result
+
+        // Drop our references; a new start() builds fresh ones.
+        request = nil
+        task = nil
+        isListening = false
     }
 }

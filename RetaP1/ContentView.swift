@@ -27,7 +27,7 @@ struct ContentView: View {
             // SwiftUI re-runs this body whenever listener.transcript changes
             // (that's @Observable at work), so the text updates as you speak.
             if listener.transcript.isEmpty {
-                Text("Ready to listen.")
+                Text(listener.isListening ? "Listening…" : "Ready to listen.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary) // muted gray for secondary text
             } else {
@@ -40,37 +40,33 @@ struct ContentView: View {
                 .frame(height: 120) // keep the card compact; long text scrolls
             }
 
-            Button("Start listening") {
-                // Ask permission to use Apple's speech recognition. Like the mic,
-                // this shows its own one-time system prompt. status is an enum;
-                // we translate it to readable text with a switch.
-                SFSpeechRecognizer.requestAuthorization { status in
-                    let text: String
-                    switch status {
-                    case .authorized:    text = "authorized"
-                    case .denied:        text = "denied"
-                    case .restricted:    text = "restricted"      // not allowed on this device
-                    case .notDetermined: text = "not determined"  // user hasn't chosen yet
-                    @unknown default:    text = "unknown"          // future-proofing
-                    }
-                    print("Speech recognition authorization: \(text)")
-                }
-
-                // Ask macOS for permission to use the microphone.
-                // The answer does NOT come back on this line — the user has to
-                // respond to a dialog first. So we hand requestAccess a "closure"
-                // (the { granted in ... } block): a chunk of code it stores and
-                // runs LATER, once the user taps Allow/Don't Allow. `granted`
-                // is the true/false result passed back to us.
-                AVCaptureDevice.requestAccess(for: .audio) { granted in
-                    if granted {
-                        listener.start() // begin capturing mic audio
-                    } else {
-                        print("Microphone permission denied.")
+            Button(listener.isListening ? "Stop" : "Start listening") {
+                if listener.isListening {
+                    listener.stop()
+                } else {
+                    // Permission chain: ask for speech recognition, then (inside
+                    // its callback) for the microphone, then (inside THAT one)
+                    // hop to the main thread and start. Both prompts only ever
+                    // appear once; afterwards macOS answers instantly.
+                    SFSpeechRecognizer.requestAuthorization { status in
+                        guard status == .authorized else {
+                            print("Speech recognition not authorized.")
+                            return
+                        }
+                        AVCaptureDevice.requestAccess(for: .audio) { granted in
+                            guard granted else {
+                                print("Microphone permission denied.")
+                                return
+                            }
+                            DispatchQueue.main.async {
+                                listener.start()
+                            }
+                        }
                     }
                 }
             }
             .buttonStyle(.borderedProminent)
+            .tint(listener.isListening ? .red : .accentColor) // red while recording
 
             // TEMPORARY (mic-less testing): transcribe a bundled audio file to
             // verify the speech stack. Remove once live transcription works.
