@@ -37,6 +37,10 @@ struct ContentView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .frame(height: 120) // keep the card compact; long text scrolls
+
+                Text("Seams noticed: \(listener.seamCount)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Button(listener.isListening ? "Stop" : "Start listening") {

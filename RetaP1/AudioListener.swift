@@ -19,6 +19,8 @@ class AudioListener {
     var transcript = ""
     // Whether we're currently capturing; drives the Start/Stop button label.
     var isListening = false
+    // How many seams (sustained pauses) we've noticed this session.
+    var seamCount = 0
 
     // Long-lived machinery (properties, so they outlive start()):
     private let engine = AVAudioEngine()
@@ -50,6 +52,16 @@ class AudioListener {
         request.shouldReportPartialResults = true  // refine the transcript as we go
         self.request = request // kept as a property so stop() can call endAudio()
 
+        // Seam tuning. Threshold is a starting guess — tune it against the
+        // printed level: values (silence must sit below it, speech above).
+        let silenceThreshold: Float = 0.005
+        let seamPauseSeconds = 2.0
+
+        // Captured by the tap closure below: a closure keeps the variables it
+        // captures ALIVE between calls, so this local persists across buffers,
+        // accumulating how long the current quiet stretch has lasted.
+        var quietSeconds = 0.0
+
         // The pipe: every ~0.1s chunk from the mic is appended to the request.
         // (`_` discards the timestamp parameter we don't need.)
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: nil) { buffer, _ in
@@ -65,8 +77,23 @@ class AudioListener {
                 sumOfSquares += channel[i] * channel[i]
             }
             let rms = sqrt(sumOfSquares / Float(count))
-            // Temporary diagnostic; becomes seam-detection input in the next step.
-            print(String(format: "level: %.4f", rms))
+
+            if rms < silenceThreshold {
+                // Quiet chunk: extend the streak by this buffer's duration.
+                let before = quietSeconds
+                quietSeconds += Double(buffer.frameLength) / buffer.format.sampleRate
+                // Edge trigger: fire exactly once, on the buffer that crosses
+                // the line — a longer silence is still just one seam.
+                if before < seamPauseSeconds && quietSeconds >= seamPauseSeconds {
+                    print("SEAM — \(seamPauseSeconds)s of quiet")
+                    DispatchQueue.main.async {
+                        self.seamCount += 1
+                    }
+                }
+            } else {
+                // Loud chunk: streak broken, re-arm for the next pause.
+                quietSeconds = 0
+            }
         }
 
         // Same result closure as FileTranscriber — called once per refined guess.
@@ -88,6 +115,7 @@ class AudioListener {
             try engine.start()
             isListening = true
             transcript = "" // fresh session, fresh transcript
+            seamCount = 0
             print("Audio engine started.")
         } catch {
             print("Failed to start audio engine: \(error)")
