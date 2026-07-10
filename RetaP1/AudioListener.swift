@@ -24,6 +24,7 @@ class AudioListener {
 
     // Long-lived machinery (properties, so they outlive start()):
     private let engine = AVAudioEngine()
+    private let promptCard = PromptCard()
     private var recognizer: SFSpeechRecognizer?
     private var request: SFSpeechAudioBufferRecognitionRequest?
     private var task: SFSpeechRecognitionTask?
@@ -88,6 +89,9 @@ class AudioListener {
                     print("SEAM — \(seamPauseSeconds)s of quiet")
                     DispatchQueue.main.async {
                         self.seamCount += 1
+                        // Placeholder prompt — a later phase generates a real
+                        // question from the transcript segment just finished.
+                        self.promptCard.show(prompt: "What was the key idea of the last stretch?")
                     }
                 }
             } else {
