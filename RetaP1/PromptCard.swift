@@ -59,6 +59,10 @@ class PromptCard {
         panel.isOpaque = false
         panel.backgroundColor = .clear      // let the rounded corners show
         panel.level = .floating             // stay above normal windows
+        // Follow the user everywhere: appear on whichever Space/desktop is
+        // active, including alongside full-screen apps (a student watching
+        // full-screen slides is the main use case).
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         // NSHostingView is the SwiftUI->AppKit bridge: wraps our SwiftUI view
         // so the panel can display it.
         panel.contentView = NSHostingView(rootView: view)
