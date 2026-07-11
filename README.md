@@ -21,24 +21,24 @@ stealing keyboard focus. Stop ends the session cleanly.
 How it works, in one line: the microphone feeds an `AVAudioEngine` tap, each
 audio buffer is appended to an on-device `SFSpeechRecognizer` request, and its
 partial results update an observable `transcript` that SwiftUI redraws live;
-per-buffer RMS loudness drives the pause detector.
+a seam fires when the transcript stops growing for 2 seconds.
+
+Seam detection is word-based, not loudness-based: a seam means "no new words
+for a while," so it works in rooms that are never silent (HVAC, shuffling,
+fans) — the recognizer already ignores non-speech background noise. Verified
+against steady background noise.
 
 ## Known limitations / roadmap
 
-- **Seam detection is loudness-based, and rooms are not silent.** A fixed RMS
-  threshold fails in a real lecture hall: background noise (HVAC, shuffling)
-  can sit above the threshold, so the teacher's pauses never read as quiet and
-  no seams fire. Planned ladder: (1) calibrate the threshold to the room's
-  measured noise floor; (2) use "transcript stopped growing for N seconds" as
-  the primary seam signal — the recognizer already ignores non-speech; (3) if
-  needed, a real voice-activity-detection model.
 - The prompt card does not appear over full-screen apps yet (needs panel
   collection-behavior flags).
-- The silence threshold (0.005) and pause length (2.0 s) are constants in
-  `AudioListener.start()`; tune there for now.
+- The pause length (2.0 s) is a constant in `AudioListener`; seams fire from
+  the last recognized word, so cards can lag a beat behind the actual pause.
 - Prompts are a hard-coded placeholder; generating real questions from the
   sealed paragraph is a later phase (via a server-side LLM endpoint — no API
   keys in the app).
+- If lecture halls defeat word-based detection too, the next rung is a real
+  voice-activity-detection model.
 
 ## Requirements
 

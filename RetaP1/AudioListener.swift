@@ -3,9 +3,9 @@
 //  RetaP1
 //
 //  Captures live microphone audio, transcribes it on-device, and detects
-//  seams (sustained pauses). Each seam seals the current transcript segment
-//  into a paragraph, restarts recognition (so no task runs long enough to
-//  decay), and shows the floating prompt card.
+//  seams. A seam is "no NEW WORDS for a while" — not "no sound" — so it
+//  keeps working in rooms that are never actually silent: the recognizer
+//  already ignores background noise for us.
 //
 
 import AVFoundation
@@ -31,9 +31,13 @@ class AudioListener {
     // Transcript structure: paragraphs sealed at seams + the live segment.
     private var finishedText = ""
     private var currentSegment = ""
-    // Stamped into every recognition callback; results carrying an old
-    // number are from a retired segment and get ignored (stale-result guard).
+    // Results from a retired segment carry an old number and get ignored.
     private var segmentGeneration = 0
+
+    // Seam detection: when did the transcript last actually change?
+    private let seamPauseSeconds = 2.0
+    private var lastNewText = Date()
+    private var seamTimer: Timer?
 
     func start() {
         // Installing a second tap while running would crash; bail if already on.
@@ -51,46 +55,11 @@ class AudioListener {
             return
         }
 
-        // Seam tuning. Threshold is a starting guess — tune it against
-        // measured levels (silence must sit below it, speech above).
-        let silenceThreshold: Float = 0.005
-        let seamPauseSeconds = 2.0
-        // Captured by the tap closure; persists across buffers (closures keep
-        // their captured variables alive).
-        var quietSeconds = 0.0
-
-        // [weak self]: the engine holds this closure and the closure uses self,
-        // while self holds the engine — a reference loop. weak breaks it.
+        // The tap is pure plumbing now: every chunk goes to the CURRENT
+        // segment's request (a property — it's replaced at each seam).
+        // [weak self] breaks the engine -> closure -> self -> engine loop.
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: nil) { [weak self] buffer, _ in
-            guard let self else { return }
-
-            // Append to the CURRENT segment's request. This must read the
-            // property each time — the request is replaced at every seam, and
-            // a captured local would keep feeding the retired one forever.
-            self.request?.append(buffer)
-
-            // Loudness (RMS): square each sample so negative swings count,
-            // average, square-root. Samples are Float32 in -1...1.
-            guard let channel = buffer.floatChannelData?[0] else { return }
-            let count = Int(buffer.frameLength)
-            var sumOfSquares: Float = 0
-            for i in 0..<count {
-                sumOfSquares += channel[i] * channel[i]
-            }
-            let rms = sqrt(sumOfSquares / Float(count))
-
-            if rms < silenceThreshold {
-                let before = quietSeconds
-                quietSeconds += Double(buffer.frameLength) / buffer.format.sampleRate
-                // Edge trigger: fire once, on the buffer that crosses the line.
-                if before < seamPauseSeconds && quietSeconds >= seamPauseSeconds {
-                    DispatchQueue.main.async {
-                        self.handleSeam()
-                    }
-                }
-            } else {
-                quietSeconds = 0 // streak broken; re-arm for the next pause
-            }
+            self?.request?.append(buffer)
         }
 
         // Fresh session state.
@@ -98,7 +67,15 @@ class AudioListener {
         currentSegment = ""
         transcript = ""
         seamCount = 0
+        lastNewText = Date()
         beginRecognitionSegment()
+
+        // A repeating check on the main thread: has speech gone quiet long
+        // enough? (A seam is the ABSENCE of callbacks — nothing arrives to
+        // notify us of nothing, so we poll twice a second.)
+        seamTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            self?.checkForSeam()
+        }
 
         engine.prepare()
         do {
@@ -112,6 +89,9 @@ class AudioListener {
 
     func stop() {
         guard engine.isRunning else { return }
+
+        seamTimer?.invalidate() // a Timer keeps firing until told to stop
+        seamTimer = nil
 
         // Teardown mirrors setup, in order:
         engine.inputNode.removeTap(onBus: 0) // 1. stop new buffers entering
@@ -137,12 +117,17 @@ class AudioListener {
 
         task = recognizer?.recognitionTask(with: request) { [weak self] result, error in
             DispatchQueue.main.async {
-                // Stale-result guard: a retired task's last result can arrive
-                // after the next segment began; its old stamp gets it dropped.
+                // Stale-result guard: drop late results from retired tasks.
                 guard let self, generation == self.segmentGeneration else { return }
                 if let result {
-                    self.currentSegment = result.bestTranscription.formattedString
-                    self.transcript = self.finishedText + self.currentSegment
+                    let text = result.bestTranscription.formattedString
+                    // Only a CHANGE counts as speech — this timestamp is the
+                    // seam detector's whole input signal.
+                    if text != self.currentSegment {
+                        self.currentSegment = text
+                        self.lastNewText = Date()
+                        self.transcript = self.finishedText + text
+                    }
                 }
                 if let error {
                     print("Recognition error: \(error.localizedDescription)")
@@ -151,12 +136,19 @@ class AudioListener {
         }
     }
 
-    // Runs on the main thread, once per detected pause.
-    private func handleSeam() {
-        // A pause with nothing said isn't a seam — nothing to seal, nothing
-        // to recall. (Also means silence-only stretches show no card.)
-        guard !currentSegment.isEmpty else { return }
+    // Runs twice a second (main thread). All three conditions must hold:
+    // we're listening, something was said, and no new words for the pause.
+    // No edge-trigger logic needed: sealing empties currentSegment, which
+    // blocks re-firing until speech resumes.
+    private func checkForSeam() {
+        guard isListening,
+              !currentSegment.isEmpty,
+              Date().timeIntervalSince(lastNewText) >= seamPauseSeconds
+        else { return }
+        handleSeam()
+    }
 
+    private func handleSeam() {
         seamCount += 1
 
         // Seal the segment into a finished paragraph.
