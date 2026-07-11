@@ -10,14 +10,35 @@ earlier state is one `git checkout` away.
 
 ## What this app does (so far)
 
-Phase 1 is complete. Reta lives in the menu bar (a brain icon, no Dock icon)
-and, on "Start listening", captures live microphone audio and transcribes it
-in real time — entirely on-device; no audio ever leaves the Mac. The transcript
-appears in the popover as you speak, and Stop ends the session cleanly.
+Phases 1 and 2 (core) are complete. Reta lives in the menu bar (a brain icon,
+no Dock icon) and, on "Start listening", captures live microphone audio and
+transcribes it in real time — entirely on-device; no audio ever leaves the Mac.
+It detects seams (sustained pauses that end a spoken stretch): each seam seals
+the transcript into a paragraph, restarts recognition (avoiding long-session
+decay), and shows a small floating prompt card at the top-right — without
+stealing keyboard focus. Stop ends the session cleanly.
 
 How it works, in one line: the microphone feeds an `AVAudioEngine` tap, each
 audio buffer is appended to an on-device `SFSpeechRecognizer` request, and its
-partial results update an observable `transcript` that SwiftUI redraws live.
+partial results update an observable `transcript` that SwiftUI redraws live;
+per-buffer RMS loudness drives the pause detector.
+
+## Known limitations / roadmap
+
+- **Seam detection is loudness-based, and rooms are not silent.** A fixed RMS
+  threshold fails in a real lecture hall: background noise (HVAC, shuffling)
+  can sit above the threshold, so the teacher's pauses never read as quiet and
+  no seams fire. Planned ladder: (1) calibrate the threshold to the room's
+  measured noise floor; (2) use "transcript stopped growing for N seconds" as
+  the primary seam signal — the recognizer already ignores non-speech; (3) if
+  needed, a real voice-activity-detection model.
+- The prompt card does not appear over full-screen apps yet (needs panel
+  collection-behavior flags).
+- The silence threshold (0.005) and pause length (2.0 s) are constants in
+  `AudioListener.start()`; tune there for now.
+- Prompts are a hard-coded placeholder; generating real questions from the
+  sealed paragraph is a later phase (via a server-side LLM endpoint — no API
+  keys in the app).
 
 ## Requirements
 
@@ -41,7 +62,8 @@ RetaP1/
 └── RetaP1/               Source code
     ├── RetaP1App.swift      App entry point — the MenuBarExtra scene
     ├── ContentView.swift    The popover UI: transcript, Start/Stop, Quit
-    ├── AudioListener.swift  Mic capture + live on-device transcription
+    ├── AudioListener.swift  Mic capture, transcription, seam detection
+    ├── PromptCard.swift     The floating retrieval-prompt card (NSPanel)
     └── Assets.xcassets      Images, colors, and the app icon
 ```
 
