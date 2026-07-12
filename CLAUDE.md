@@ -28,7 +28,11 @@ not just ship. Not in a rush. Understanding beats speed.
 
 ## Technical ground rules
 - Native Swift/SwiftUI; Apple frameworks first (AVFoundation, Speech).
-- No API keys in the app. Prompt generation stays on-device (NaturalLanguage
-  templates, then FoundationModels); a server-side LLM endpoint only if
-  on-device quality proves insufficient — decided 2026-07-09.
+- No API keys in the app — the key lives only in a Cloudflare Worker secret.
+- Prompt generation: server-side (Cloudflare Worker -> Claude API) is the
+  primary route; on-device templates are the never-fails fallback. Decision
+  trail (2026-07-09): NaturalLanguage templates tested, not good enough;
+  Apple FoundationModels unavailable (macOS boots from external disk, which
+  blocks Apple Intelligence). Local models to be benchmarked via Ollama
+  against the same HTTP abstraction later.
 - Prefer on-device processing where possible (privacy matters for a listening app).
