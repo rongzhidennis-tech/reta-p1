@@ -1,0 +1,6 @@
+# Cloudflare Worker config. `npx wrangler dev` runs it locally;
+# `npx wrangler deploy` publishes it. No secrets in this file — the
+# Claude API key will live in a Worker secret (added in step b).
+name = "reta-prompts"
+main = "src/index.js"
+compatibility_date = "2026-07-01"
