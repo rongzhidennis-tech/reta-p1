@@ -24,6 +24,7 @@ class AudioListener {
     // Long-lived machinery (properties, so they outlive start()):
     private let engine = AVAudioEngine()
     private let promptCard = PromptCard()
+    private let promptMaker = PromptMaker()
     private var recognizer: SFSpeechRecognizer?
     private var request: SFSpeechAudioBufferRecognitionRequest?
     private var task: SFSpeechRecognitionTask?
@@ -151,8 +152,10 @@ class AudioListener {
     private func handleSeam() {
         seamCount += 1
 
-        // Seal the segment into a finished paragraph.
-        finishedText += currentSegment + "\n\n"
+        // Seal the segment into a finished paragraph (keep a copy — the
+        // prompt is generated FROM this text).
+        let sealed = currentSegment
+        finishedText += sealed + "\n\n"
         currentSegment = ""
         transcript = finishedText
 
@@ -160,8 +163,7 @@ class AudioListener {
         request?.endAudio()
         beginRecognitionSegment()
 
-        // Placeholder prompt — a later phase generates a real question from
-        // the paragraph just sealed.
-        promptCard.show(prompt: "What was the key idea of the last stretch?")
+        // Ask about what was actually just said.
+        promptCard.show(prompt: promptMaker.makePrompt(from: sealed))
     }
 }
