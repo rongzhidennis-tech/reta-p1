@@ -25,6 +25,7 @@ class AudioListener {
     private let engine = AVAudioEngine()
     private let promptCard = PromptCard()
     private let promptMaker = PromptMaker()
+    private let promptService = PromptService()
     private var recognizer: SFSpeechRecognizer?
     private var request: SFSpeechAudioBufferRecognitionRequest?
     private var task: SFSpeechRecognitionTask?
@@ -163,7 +164,20 @@ class AudioListener {
         request?.endAudio()
         beginRecognitionSegment()
 
-        // Ask about what was actually just said.
-        promptCard.show(prompt: promptMaker.makePrompt(from: sealed))
+        // Ask the Worker for a question about what was just said; if anything
+        // goes wrong, fall back to the on-device template. The card must
+        // never fail to appear.
+        // Task { } opens an async context from synchronous code — the seam
+        // handling finishes immediately; this block runs alongside it.
+        Task {
+            do {
+                let question = try await promptService.fetchQuestion(about: sealed)
+                print("question from Worker: \(question)")
+                promptCard.show(prompt: question)
+            } catch {
+                print("Prompt service failed (\(error.localizedDescription)) — using fallback.")
+                promptCard.show(prompt: promptMaker.makePrompt(from: sealed))
+            }
+        }
     }
 }
