@@ -1,30 +1,76 @@
-// reta-prompts Worker, step (a): prove the pipe with a hard-coded question.
-// Step (b) replaces the hard-coded string with a Claude API call.
+// reta-prompts Worker, step (b): authenticated, and the question now comes
+// from Claude reading the sealed paragraph. The Anthropic API key lives ONLY
+// in a Worker secret (env.ANTHROPIC_API_KEY) — never in this file.
+
+// The instructions Claude follows for every request. Iterating on this text
+// is step (c) — the quality bar: specific to the transcript, answerable in
+// one line, varied in type.
+const INSTRUCTIONS = `You write retrieval-practice questions for a student
+listening to a live lecture. The user message is a rough live transcript of
+the last stretch of the lecture; it may contain transcription errors and
+poor punctuation.
+
+Reply with exactly ONE short question that:
+- is specifically about the content of this transcript (name its concepts),
+- can be answered in one line by someone who just heard it,
+- varies in style across calls: key idea, why/how, explain-it-back, or
+  predict-what-comes-next.
+
+Reply with the question only - no preamble, no quotation marks.`;
 
 export default {
-  // Cloudflare calls this function once per incoming HTTP request —
-  // the Worker equivalent of our audio tap closure.
-  async fetch(request) {
-    // Only accept POST (the app will POST the sealed paragraph).
+  async fetch(request, env) {
+    // The lock: reject anyone who doesn't present the shared token.
+    const auth = request.headers.get("Authorization");
+    if (auth !== `Bearer ${env.AUTH_TOKEN}`) {
+      return Response.json({ error: "unauthorized" }, { status: 401 });
+    }
+
     if (request.method !== "POST") {
       return Response.json({ error: "POST only" }, { status: 405 });
     }
 
-    // Read the request body; expect JSON like {"paragraph": "..."}.
-    // Ignored for now — but parsing it already proves the app can send it.
     let paragraph = "";
     try {
       const body = await request.json();
-      paragraph = body.paragraph ?? "";
+      paragraph = (body.paragraph ?? "").trim();
     } catch {
       return Response.json({ error: "body must be JSON" }, { status: 400 });
     }
+    if (paragraph === "") {
+      return Response.json({ error: "paragraph is empty" }, { status: 400 });
+    }
 
-    // Step (a): hard-coded. The echo of the paragraph's length lets the app
-    // side verify that the text actually arrived intact.
-    return Response.json({
-      question: "What was the key idea of the last stretch?",
-      receivedCharacters: paragraph.length,
+    // Call the Claude API. The Worker is a CLIENT here — same fetch/JSON
+    // dance the Mac app does to us, one hop further down the chain.
+    const apiResponse = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": env.ANTHROPIC_API_KEY, // injected from the Worker secret
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-haiku-4-5", // fastest tier; fits the ~2s card budget
+        max_tokens: 200,           // one short question needs far less
+        system: INSTRUCTIONS,      // standing instructions, separate from data
+        messages: [{ role: "user", content: paragraph }],
+      }),
     });
+
+    if (!apiResponse.ok) {
+      // Don't leak upstream details to callers; log them for us instead.
+      console.error("Claude API error", apiResponse.status, await apiResponse.text());
+      return Response.json({ error: "generation failed" }, { status: 502 });
+    }
+
+    const data = await apiResponse.json();
+    // The reply's content is a list of blocks; the question is the text one.
+    const question = data.content?.find((block) => block.type === "text")?.text?.trim();
+    if (!question) {
+      return Response.json({ error: "no question generated" }, { status: 502 });
+    }
+
+    return Response.json({ question });
   },
 };

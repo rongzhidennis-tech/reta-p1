@@ -7,3 +7,6 @@ xcuserdata/
 # Compiled output — regenerated on every build
 build/
 DerivedData/
+
+# Local secrets — never committed (recreate from Worker secrets if cloning fresh)
+RetaP1/Secrets.swift

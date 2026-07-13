@@ -28,6 +28,8 @@ struct PromptService {
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        // The shared token the Worker requires (see Secrets.swift, gitignored).
+        request.setValue("Bearer \(Secrets.workerToken)", forHTTPHeaderField: "Authorization")
         request.httpBody = try JSONEncoder().encode(RequestBody(paragraph: paragraph))
 
         // The wait happens HERE: the function pauses (without blocking any
