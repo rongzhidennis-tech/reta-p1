@@ -27,6 +27,10 @@ struct PromptService {
     func fetchQuestion(about paragraph: String) async throws -> String {
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
+        // A prompt that arrives late is worthless — the lecture has moved on.
+        // If no answer within 3s, URLSession throws, and the caller's catch
+        // shows the template fallback instead. (Default would be 60s.)
+        request.timeoutInterval = 3
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         // The shared token the Worker requires (see Secrets.swift, gitignored).
         request.setValue("Bearer \(Secrets.workerToken)", forHTTPHeaderField: "Authorization")
