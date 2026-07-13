@@ -10,13 +10,28 @@ listening to a live lecture. The user message is a rough live transcript of
 the last stretch of the lecture; it may contain transcription errors and
 poor punctuation.
 
-Reply with exactly ONE short question that:
-- is specifically about the content of this transcript (name its concepts),
-- can be answered in one line by someone who just heard it,
-- varies in style across calls: key idea, why/how, explain-it-back, or
-  predict-what-comes-next.
+Produce exactly ONE short question and its model answer:
+- the question is specifically about the content of this transcript (name
+  its concepts) and varies in style across calls: key idea, why/how,
+  explain-it-back, or predict-what-comes-next;
+- the answer is ONE line, and must be verifiable from the transcript alone -
+  if the transcript doesn't contain the answer, ask about what it does
+  contain instead.`;
 
-Reply with the question only - no preamble, no quotation marks.`;
+// Structured output: the API constrains generation to this exact shape, so
+// the reply is guaranteed parseable - no prose, no preamble, ever.
+const OUTPUT_FORMAT = {
+  type: "json_schema",
+  schema: {
+    type: "object",
+    properties: {
+      question: { type: "string" },
+      answer: { type: "string" },
+    },
+    required: ["question", "answer"],
+    additionalProperties: false,
+  },
+};
 
 export default {
   async fetch(request, env) {
@@ -52,8 +67,9 @@ export default {
       },
       body: JSON.stringify({
         model: "claude-haiku-4-5", // fastest tier; fits the ~2s card budget
-        max_tokens: 200,           // one short question needs far less
+        max_tokens: 300,           // one question + one-line answer
         system: INSTRUCTIONS,      // standing instructions, separate from data
+        output_config: { format: OUTPUT_FORMAT },
         messages: [{ role: "user", content: paragraph }],
       }),
     });
@@ -65,12 +81,23 @@ export default {
     }
 
     const data = await apiResponse.json();
-    // The reply's content is a list of blocks; the question is the text one.
-    const question = data.content?.find((block) => block.type === "text")?.text?.trim();
-    if (!question) {
+    // The reply's content is a list of blocks; with structured output, the
+    // text block is guaranteed to be JSON matching OUTPUT_FORMAT's schema.
+    const text = data.content?.find((block) => block.type === "text")?.text;
+    let generated;
+    try {
+      generated = JSON.parse(text);
+    } catch {
+      // Belt and suspenders (e.g. a safety refusal has no schema guarantee):
+      // any unparseable reply becomes a 502, which the app turns into the
+      // template fallback card.
+      console.error("unparseable model reply", text);
       return Response.json({ error: "no question generated" }, { status: 502 });
     }
 
-    return Response.json({ question });
+    return Response.json({
+      question: generated.question.trim(),
+      answer: generated.answer.trim(),
+    });
   },
 };
