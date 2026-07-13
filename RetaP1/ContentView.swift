@@ -41,6 +41,12 @@ struct ContentView: View {
                 Text("Seams noticed: \(listener.seamCount)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+
+                if listener.gotCount + listener.missedCount > 0 {
+                    Text("Recall: \(listener.gotCount) ✓  \(listener.missedCount) ✗")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             Button(listener.isListening ? "Stop" : "Start listening") {

@@ -5,12 +5,13 @@ Reta is a macOS menu-bar app for motivated college students. It listens to a liv
 lecture, transcribes it in real time, and at natural seams (topic transitions,
 pauses) shows ONE short retrieval prompt as a small floating card — active recall
 in the moment. The hard core of the product is the *timing* of prompts.
-Current status: Phase 4 (Option A — complete the recall interaction: answer
-reveal + self-rating on the card). Phases 1–3 are complete and tagged:
+Current status: Phase 4A complete (recall interaction: answer reveal +
+Got it / Missed it self-rating with a per-session tally). Next direction TBD
+(persistence + spaced review, or content-aware seam timing). Tagged phases:
 v0.1-phase1 (live capture + on-device transcription), v0.2-phase2
 (noise-robust seam detection + floating card), v0.3-phase3 (Claude-generated
-questions via a Cloudflare Worker, with on-device template fallback and a 3 s
-timeout — the card never fails to appear).
+questions via a Cloudflare Worker, on-device template fallback, 3 s timeout),
+v0.4-phase4a (two-stage recall card + session tally).
 
 ## Who you're working with
 A first-time developer whose explicit goal is to learn to build software properly,

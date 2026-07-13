@@ -20,6 +20,9 @@ class AudioListener {
     var isListening = false
     // How many seams (pauses that ended a spoken stretch) this session.
     var seamCount = 0
+    // Self-rating tally for this session (Got it / Missed it on the card).
+    var gotCount = 0
+    var missedCount = 0
 
     // Long-lived machinery (properties, so they outlive start()):
     private let engine = AVAudioEngine()
@@ -69,6 +72,8 @@ class AudioListener {
         currentSegment = ""
         transcript = ""
         seamCount = 0
+        gotCount = 0
+        missedCount = 0
         lastNewText = Date()
         beginRecognitionSegment()
 
@@ -175,8 +180,11 @@ class AudioListener {
             do {
                 let prompt = try await promptService.fetchPrompt(about: sealed)
                 promptCard.show(question: prompt.question, answer: prompt.answer) { gotIt in
-                    // Step (c) turns this into a session tally.
-                    print("self-rated: \(gotIt ? "got it" : "missed it")")
+                    if gotIt {
+                        self.gotCount += 1
+                    } else {
+                        self.missedCount += 1
+                    }
                 }
             } catch {
                 print("Prompt service failed (\(error.localizedDescription)) — using fallback.")
