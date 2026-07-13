@@ -2,8 +2,15 @@
 //  PromptCard.swift
 //  RetaP1
 //
-//  The floating retrieval-prompt card. Shown at a seam, near the menu bar,
-//  WITHOUT stealing keyboard focus from whatever the user is doing.
+//  The floating retrieval-prompt card. Two-stage when an answer exists:
+//  question + "Reveal answer" first (recall before checking!), then the
+//  answer + Got it / Missed it self-rating. Template fallback cards have
+//  no answer and keep the simple one-button form.
+//
+//  Sizing strategy: measure the content once and create the panel at that
+//  exact size; revealing rebuilds the card at its new size. No live
+//  auto-resizing — a window that resizes itself while a delegate repositions
+//  it is a feedback loop (that crashed with a stack overflow).
 //
 
 import AppKit
@@ -11,10 +18,11 @@ import SwiftUI
 
 // What the card looks like (SwiftUI).
 struct PromptCardView: View {
-    let prompt: String
-    // A closure stored as a property: the card doesn't know HOW to dismiss
-    // itself — its owner hands it the instructions, same way we hand Apple's
-    // APIs closures. Now we're the ones designing that pattern.
+    let question: String
+    let answer: String?              // nil for fallback template cards
+    let isRevealed: Bool
+    let onReveal: () -> Void
+    let onRated: ((Bool) -> Void)?   // called with true = "Got it"
     let onDismiss: () -> Void
 
     var body: some View {
@@ -22,11 +30,44 @@ struct PromptCardView: View {
             Text("Quick recall")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            Text(prompt)
+            Text(question)
                 .font(.body)
-            HStack {
-                Spacer() // pushes the button to the trailing edge
-                Button("Got it", action: onDismiss)
+                // Never truncate: take as many lines as the text needs.
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let answer {
+                if isRevealed {
+                    Divider()
+                    Text(answer)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    HStack {
+                        Spacer()
+                        Button("Missed it") {
+                            onRated?(false)
+                            onDismiss()
+                        }
+                        Button("Got it") {
+                            onRated?(true)
+                            onDismiss()
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
+                } else {
+                    // Recall first: the answer stays hidden until asked for.
+                    HStack {
+                        Spacer()
+                        Button("Reveal answer", action: onReveal)
+                            .buttonStyle(.borderedProminent)
+                    }
+                }
+            } else {
+                // No answer available (template fallback) — old behavior.
+                HStack {
+                    Spacer()
+                    Button("Got it", action: onDismiss)
+                }
             }
         }
         .padding(16)
@@ -40,18 +81,39 @@ struct PromptCardView: View {
 class PromptCard {
     private var panel: NSPanel?
 
-    func show(prompt: String) {
-        hide() // one card at a time; a new seam replaces the old card
+    func show(question: String, answer: String?, onRated: ((Bool) -> Void)? = nil) {
+        present(question: question, answer: answer, revealed: false, onRated: onRated)
+    }
 
-        let view = PromptCardView(prompt: prompt) { [weak self] in
-            self?.hide()
-        }
+    private func present(question: String, answer: String?, revealed: Bool, onRated: ((Bool) -> Void)?) {
+        hide() // one card at a time; replaces the old panel
+
+        let view = PromptCardView(
+            question: question,
+            answer: answer,
+            isRevealed: revealed,
+            onReveal: { [weak self] in
+                // Rebuild the card in its revealed form — the closure captured
+                // question/answer/onRated, so it has everything it needs.
+                self?.present(question: question, answer: answer, revealed: true, onRated: onRated)
+            },
+            onRated: onRated,
+            onDismiss: { [weak self] in
+                self?.hide()
+            }
+        )
+
+        // NSHostingView is the SwiftUI->AppKit bridge. Measure the content
+        // ONCE; the panel is created at exactly that size.
+        let hosting = NSHostingView(rootView: view)
+        let size = hosting.fittingSize
+        hosting.frame = NSRect(origin: .zero, size: size)
 
         // .nonactivatingPanel: visible and clickable, but does NOT steal
         // keyboard focus from the app the user is working in.
         // .borderless: no title bar — the SwiftUI card supplies all the looks.
         let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 320, height: 120),
+            contentRect: NSRect(origin: .zero, size: size),
             styleMask: [.nonactivatingPanel, .borderless],
             backing: .buffered,
             defer: false
@@ -60,18 +122,15 @@ class PromptCard {
         panel.backgroundColor = .clear      // let the rounded corners show
         panel.level = .floating             // stay above normal windows
         // Follow the user everywhere: appear on whichever Space/desktop is
-        // active, including alongside full-screen apps (a student watching
-        // full-screen slides is the main use case).
+        // active, including alongside full-screen apps.
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        // NSHostingView is the SwiftUI->AppKit bridge: wraps our SwiftUI view
-        // so the panel can display it.
-        panel.contentView = NSHostingView(rootView: view)
+        panel.contentView = hosting
 
-        // Position: top-right of the screen, just under the menu bar.
-        // AppKit's origin is the BOTTOM-left; y grows upward, so "top" = maxY.
+        // Pin the TOP-left corner just under the menu bar (AppKit's origin is
+        // the bottom-left, so taller cards would otherwise climb upward).
         if let screen = NSScreen.main {
             let area = screen.visibleFrame // excludes menu bar and Dock
-            panel.setFrameOrigin(NSPoint(x: area.maxX - 336, y: area.maxY - 136))
+            panel.setFrameTopLeftPoint(NSPoint(x: area.maxX - 336, y: area.maxY - 16))
         }
 
         // Show it without activating our app (keeps the user's focus put).

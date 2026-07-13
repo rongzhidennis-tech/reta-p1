@@ -18,13 +18,15 @@ struct PromptService {
         let paragraph: String            // -> {"paragraph": "..."}
     }
     private struct ResponseBody: Codable {
-        let question: String             // <- {"question": "..."} (extra keys ignored)
+        let question: String             // <- {"question": "...", "answer": "..."}
+        let answer: String
     }
 
     // `async` = calling this may involve waiting (the network round trip);
     // `throws` = it can fail (no network, bad response). The caller must
-    // acknowledge both with `try await`.
-    func fetchQuestion(about paragraph: String) async throws -> String {
+    // acknowledge both with `try await`. Returns a named tuple: two values
+    // travelling together, addressed as .question and .answer.
+    func fetchPrompt(about paragraph: String) async throws -> (question: String, answer: String) {
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
         // A prompt that arrives late is worthless — the lecture has moved on.
@@ -40,6 +42,7 @@ struct PromptService {
         // thread) until the response arrives, then resumes on the next line.
         let (data, _) = try await URLSession.shared.data(for: request)
 
-        return try JSONDecoder().decode(ResponseBody.self, from: data).question
+        let body = try JSONDecoder().decode(ResponseBody.self, from: data)
+        return (question: body.question, answer: body.answer)
     }
 }

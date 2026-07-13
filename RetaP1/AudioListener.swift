@@ -115,6 +115,8 @@ class AudioListener {
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.requiresOnDeviceRecognition = true // audio never leaves this Mac
         request.shouldReportPartialResults = true  // refine as we go
+        request.addsPunctuation = true             // readable transcript, cleaner LLM input
+        request.taskHint = .dictation              // expect long-form speech, not commands
         self.request = request
 
         task = recognizer?.recognitionTask(with: request) { [weak self] result, error in
@@ -171,12 +173,14 @@ class AudioListener {
         // handling finishes immediately; this block runs alongside it.
         Task {
             do {
-                let question = try await promptService.fetchQuestion(about: sealed)
-                print("question from Worker: \(question)")
-                promptCard.show(prompt: question)
+                let prompt = try await promptService.fetchPrompt(about: sealed)
+                promptCard.show(question: prompt.question, answer: prompt.answer) { gotIt in
+                    // Step (c) turns this into a session tally.
+                    print("self-rated: \(gotIt ? "got it" : "missed it")")
+                }
             } catch {
                 print("Prompt service failed (\(error.localizedDescription)) — using fallback.")
-                promptCard.show(prompt: promptMaker.makePrompt(from: sealed))
+                promptCard.show(question: promptMaker.makePrompt(from: sealed), answer: nil)
             }
         }
     }
